@@ -303,15 +303,18 @@ canvas.addEventListener('mousedown', e=>{
   const p=padAt(e.clientX,e.clientY);
   if (p) { dragPad=p; dragOX=e.clientX-p.x; dragOY=e.clientY-p.y; }
 });
-window.addEventListener('mousemove', e=>{
+document.addEventListener('mousemove', e=>{
   mx=e.clientX; my=e.clientY;
   if (dragPad) { dragPad.x=e.clientX-dragOX; dragPad.y=e.clientY-dragOY; didDrag=true; }
   else if (Math.hypot(e.clientX-mdX, e.clientY-mdY) > 6) didDrag=true;
 });
-window.addEventListener('mouseup', e=>{
+document.addEventListener('mouseup', e=>{
   if (dragPad) { addRipple(dragPad.x,dragPad.y,.5); dragPad=null; }
   else if (!didDrag) addRipple(e.clientX,e.clientY,1.2);
   didDrag=false;
+});
+canvas.addEventListener('click', e=>{
+  if (!dragPad) addRipple(e.clientX,e.clientY,1.2);
 });
 canvas.addEventListener('mouseleave',()=>{ mx=-9999; my=-9999; });
 
