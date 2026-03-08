@@ -70,12 +70,22 @@ function addRipple(x, y, str) {
 }
 
 let pads = [];
+function spread(existing, minDist, maxTries, xMin, xMax, yMin, yMax) {
+  for (let t=0; t<maxTries; t++) {
+    const x = xMin + Math.random()*(xMax-xMin);
+    const y = yMin + Math.random()*(yMax-yMin);
+    if (existing.every(e => Math.hypot(x-e.x, y-e.y) >= minDist)) return {x, y};
+  }
+  return { x: xMin+Math.random()*(xMax-xMin), y: yMin+Math.random()*(yMax-yMin) };
+}
+
 function initPads() {
   pads = [];
   const n = Math.max(4, Math.min(9, Math.floor(W*H/52000)));
   for (let i=0;i<n;i++) {
+    const pos = spread(pads, Math.min(W,H)*.22, 40, W*.1, W*.9, H*.1, H*.9);
     pads.push({
-      x:W*.1+Math.random()*(W*.8), y:H*.1+Math.random()*(H*.8),
+      x:pos.x, y:pos.y,
       r:24+Math.random()*26, rot:Math.random()*Math.PI*2,
       notch:Math.random()*Math.PI*2, wobPh:Math.random()*Math.PI*2,
       flower:Math.random()<.45,
@@ -143,15 +153,20 @@ let fish = [];
 function initFish() {
   fish = [];
   const n = Math.max(4, Math.min(8, Math.floor(W*H/75000)));
-  for (let i=0;i<n;i++) fish.push(new Koi());
+  const placed = [];
+  for (let i=0;i<n;i++) {
+    const pos = spread(placed, Math.min(W,H)*.2, 40, W*.12, W*.88, H*.12, H*.88);
+    placed.push(pos);
+    fish.push(new Koi(pos.x, pos.y));
+  }
 }
 
 class Koi {
-  constructor() {
+  constructor(startX, startY) {
     const ci = Math.floor(Math.random()*COLORS.length);
     this.col = COLORS[ci];
-    this.x = W*.15+Math.random()*(W*.7);
-    this.y = H*.15+Math.random()*(H*.7);
+    this.x = startX !== undefined ? startX : W*.15+Math.random()*(W*.7);
+    this.y = startY !== undefined ? startY : H*.15+Math.random()*(H*.7);
     this.angle = Math.random()*Math.PI*2;
     this.len = 44+Math.random()*28;
     this.girth = this.len*.27;
