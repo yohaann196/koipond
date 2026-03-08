@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Koi Pond</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,300&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; overflow:hidden; background:#071410; }
+canvas { display:block; position:fixed; inset:0; }
+#label {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+  font-family:'Cormorant Garamond',serif; font-style:italic;
+  font-size:1rem; letter-spacing:.22em; color:rgba(255,255,255,.2);
+  pointer-events:none; animation:fp 4s ease-in-out infinite;
+}
+@keyframes fp { 0%,100%{opacity:.2} 50%{opacity:.42} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="label">click to ripple · drag lily pads · fish follow cursor</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  buildBg();
+  initCaustics();
+  initPads();
+  initFish();
+}
+window.addEventListener('resize', resize);
+
+let bgCanvas;
+function buildBg() {
+  bgCanvas = document.createElement('canvas');
+  bgCanvas.width = W; bgCanvas.height = H;
+  const bc = bgCanvas.getContext('2d');
+  const g = bc.createRadialGradient(W*.45,H*.42,0, W*.5,H*.5, Math.max(W,H)*.8);
+  g.addColorStop(0,  '#1e4030');
+  g.addColorStop(.4, '#122a1e');
+  g.addColorStop(.75,'#0b1e14');
+  g.addColorStop(1,  '#060f09');
+  bc.fillStyle = g; bc.fillRect(0,0,W,H);
+  const v = bc.createRadialGradient(W/2,H/2,Math.min(W,H)*.25, W/2,H/2,Math.max(W,H)*.75);
+  v.addColorStop(0,'transparent'); v.addColorStop(1,'rgba(0,0,0,.55)');
+  bc.fillStyle = v; bc.fillRect(0,0,W,H);
+}
+
+let caustics = [];
+function initCaustics() {
+  caustics = [];
+  for (let i=0;i<28;i++) caustics.push({
+    x:Math.random()*W, y:Math.random()*H,
+    r:20+Math.random()*60, ph:Math.random()*Math.PI*2,
+    spd:.003+Math.random()*.006, a:.015+Math.random()*.025
+  });
+}
+
+let ripples = [];
+function addRipple(x, y, str) {
+  str = str||1;
+  ripples.push({x, y, r:2, maxR:50+str*40, a:.5+str*.15, spd:2+str*.8});
+  if (str>.6) ripples.push({x:x+(Math.random()-.5)*6, y:y+(Math.random()-.5)*6, r:1, maxR:24, a:.22, spd:1.5});
+}
+
+let pads = [];
+function initPads() {
+  pads = [];
+  const n = Math.max(4, Math.min(9, Math.floor(W*H/52000)));
+  for (let i=0;i<n;i++) {
+    pads.push({
+      x:W*.1+Math.random()*(W*.8), y:H*.1+Math.random()*(H*.8),
+      r:24+Math.random()*26, rot:Math.random()*Math.PI*2,
+      notch:Math.random()*Math.PI*2, wobPh:Math.random()*Math.PI*2,
+      flower:Math.random()<.45,
+      fCol:Math.random()<.5?'#f8c0d0':'#fff8e0',
+      fPh:Math.random()*Math.PI*2
+    });
+  }
+}
+
+function drawPad(p, tick) {
+  const wobble = Math.sin(tick*.0011+p.wobPh)*.016;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rot+wobble);
+  const r=p.r, n=p.notch;
+
+  ctx.save(); ctx.translate(3,5); ctx.globalAlpha=.18;
+  ctx.beginPath(); ctx.arc(0,0,r,n+.2,n+Math.PI*2-.2); ctx.lineTo(0,0); ctx.closePath();
+  ctx.fillStyle='#000'; ctx.fill(); ctx.restore();
+
+  ctx.beginPath(); ctx.arc(0,0,r,n+.18,n+Math.PI*2-.18); ctx.lineTo(0,0); ctx.closePath();
+  const g=ctx.createRadialGradient(-r*.2,-r*.2,0, 0,0,r);
+  g.addColorStop(0,'#509060'); g.addColorStop(.5,'#3a7448'); g.addColorStop(1,'#1e4228');
+  ctx.fillStyle=g; ctx.fill();
+
+  ctx.save(); ctx.globalAlpha=.22; ctx.strokeStyle='#78c888'; ctx.lineWidth=.8;
+  for (let v=0;v<7;v++) {
+    const va=n+.4+v*(Math.PI*2-.8)/7;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(va)*r*.88,Math.sin(va)*r*.88); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.beginPath(); ctx.arc(0,0,r,n+.18,n+Math.PI*2-.18); ctx.lineTo(0,0); ctx.closePath();
+  ctx.strokeStyle='rgba(20,70,35,.5)'; ctx.lineWidth=1; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(0,0,r*.84,n+.4,n+Math.PI*.72);
+  ctx.strokeStyle='rgba(140,220,160,.18)'; ctx.lineWidth=2.2; ctx.stroke();
+
+  if (p.flower) {
+    const fp=p.fPh+tick*.0007;
+    const fr=r*.25, fx=Math.cos(n+Math.PI)*r*.38, fy=Math.sin(n+Math.PI)*r*.38;
+    for (let pl=0;pl<6;pl++) {
+      const pa=fp+pl*Math.PI/3;
+      ctx.beginPath();
+      ctx.ellipse(fx+Math.cos(pa)*fr*.6, fy+Math.sin(pa)*fr*.6, fr*.5,fr*.28,pa,0,Math.PI*2);
+      ctx.fillStyle=p.fCol; ctx.globalAlpha=.88; ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(fx,fy,fr*.26,0,Math.PI*2); ctx.fillStyle='#f0de50'; ctx.fill();
+    ctx.beginPath(); ctx.arc(fx,fy,fr*.12,0,Math.PI*2); ctx.fillStyle='#d09018'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+const COLORS = [
+  ['#f07040','#fff4ee','#b03818'],
+  ['#f0ead8','#d82818','#b01808'],
+  ['#181818','#e8d870','#b09828'],
+  ['#f0a020','#fef8e0','#c07010'],
+  ['#eee8d8','#2244aa','#162878'],
+  ['#e06828','#181818','#282828'],
+];
+
+let fish = [];
+function initFish() {
+  fish = [];
+  const n = Math.max(4, Math.min(8, Math.floor(W*H/75000)));
+  for (let i=0;i<n;i++) fish.push(new Koi());
+}
+
+class Koi {
+  constructor() {
+    const ci = Math.floor(Math.random()*COLORS.length);
+    this.col = COLORS[ci];
+    this.x = W*.15+Math.random()*(W*.7);
+    this.y = H*.15+Math.random()*(H*.7);
+    this.angle = Math.random()*Math.PI*2;
+    this.len = 44+Math.random()*28;
+    this.girth = this.len*.27;
+    this.speed = .55+Math.random()*.75;
+    this.turnSpd = .013+Math.random()*.016;
+    this.tailFreq = .044+Math.random()*.024;
+    this.tailAmp = .36+Math.random()*.2;
+    this.phase = Math.random()*Math.PI*2;
+    this.tx = this.x; this.ty = this.y;
+    this.wanderT = 0;
+    this.wanderInt = 200+Math.floor(Math.random()*250);
+    this.scared = false; this.scaredT = 0;
+    this.depth = Math.random();
+    this.marks = [];
+    const nm=1+Math.floor(Math.random()*3);
+    for (let i=0;i<nm;i++) this.marks.push({t:.15+Math.random()*.6, side:Math.random()<.5?1:-1, sz:.26+Math.random()*.3});
+  }
+
+  update(mx, my) {
+    this.phase += this.tailFreq;
+    this.wanderT++;
+    const dm = Math.hypot(this.x-mx, this.y-my);
+
+    if (this.scared) {
+      this.scaredT--;
+      if (this.scaredT<=0) this.scared=false;
+    }
+
+    if (!this.scared && dm<85) {
+      this.scared=true; this.scaredT=80+Math.random()*60;
+      const fa=Math.atan2(this.y-my, this.x-mx);
+      this.tx=this.x+Math.cos(fa)*200; this.ty=this.y+Math.sin(fa)*200;
+    } else if (!this.scared && dm<190) {
+      this.tx+=(mx-this.tx)*.04; this.ty+=(my-this.ty)*.04;
+    } else if (this.wanderT>this.wanderInt) {
+      this.wanderT=0; this.wanderInt=180+Math.floor(Math.random()*280);
+      this.tx=W*.08+Math.random()*(W*.84); this.ty=H*.08+Math.random()*(H*.84);
+    }
+
+    this.tx=Math.max(W*.05,Math.min(W*.95,this.tx));
+    this.ty=Math.max(H*.05,Math.min(H*.95,this.ty));
+
+    const da0=Math.atan2(this.ty-this.y, this.tx-this.x)-this.angle;
+    const da=((da0+Math.PI*3)%(Math.PI*2))-Math.PI;
+    this.angle+=Math.sign(da)*Math.min(Math.abs(da), this.scared?this.turnSpd*2.2:this.turnSpd);
+
+    const spd=this.scared?this.speed*2.3:this.speed;
+    this.x+=Math.cos(this.angle)*spd;
+    this.y+=Math.sin(this.angle)*spd;
+
+    if(this.x<50||this.x>W-50||this.y<50||this.y>H-50){this.tx=W*.5;this.ty=H*.5;}
+    if(this.scared&&Math.random()<.05) addRipple(this.x,this.y,.28);
+  }
+
+  draw() {
+    const L=this.len, G=this.girth;
+    const sw=Math.sin(this.phase)*this.tailAmp;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle+Math.PI/2);
+
+    ctx.save(); ctx.translate(3,5); ctx.globalAlpha=.16;
+    ctx.beginPath(); ctx.ellipse(0,L*.08,G*.68,L*.4,0,0,Math.PI*2);
+    ctx.fillStyle='#000'; ctx.fill(); ctx.restore();
+
+    const tby=L*.5;
+    const tsx=sw*G;
+    const tsy=L*.46;
+    for (const side of [-1,1]) {
+      ctx.beginPath();
+      ctx.moveTo(0, tby);
+      ctx.bezierCurveTo(side*G*.58, tby+L*.13, tsx+side*G*.68, tby+tsy*.78, tsx+side*G*.26, tby+tsy);
+      ctx.bezierCurveTo(tsx+side*G*.05, tby+tsy*.7, side*G*.07, tby+L*.19, 0, tby);
+      const tg=ctx.createLinearGradient(0,tby,0,tby+tsy);
+      tg.addColorStop(0,this.col[0]+'cc');
+      tg.addColorStop(.55,this.col[0]+'77');
+      tg.addColorStop(1,this.col[0]+'22');
+      ctx.fillStyle=tg; ctx.fill();
+    }
+
+    for (const side of [-1,1]) {
+      const fs=Math.sin(this.phase*.65+(side>0?0:Math.PI))*.22;
+      ctx.save(); ctx.translate(side*G*.7,-L*.04); ctx.rotate(fs*side);
+      ctx.beginPath(); ctx.ellipse(side*G*.16,L*.1,G*.26,L*.13,side*.33,0,Math.PI*2);
+      ctx.fillStyle=this.col[0]+'88'; ctx.fill(); ctx.restore();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(0,-L*.47);
+    ctx.bezierCurveTo( G*.66,-L*.32,  G*.88,-L*.07,  G*.54, L*.28);
+    ctx.bezierCurveTo( G*.3,  L*.43,  0,     L*.5,   0,     L*.5);
+    ctx.bezierCurveTo(-G*.3,  L*.43, -G*.54, L*.28, -G*.88,-L*.07);
+    ctx.bezierCurveTo(-G*.88,-L*.07, -G*.66,-L*.32,  0,    -L*.47);
+    ctx.closePath();
+    const bg=ctx.createLinearGradient(-G,-L*.5,G,L*.4);
+    bg.addColorStop(0,this.col[0]); bg.addColorStop(.5,this.col[0]);
+    bg.addColorStop(.8,this.col[0]+'cc'); bg.addColorStop(1,this.col[2]+'99');
+    ctx.fillStyle=bg; ctx.fill();
+
+    ctx.globalAlpha=.8;
+    this.marks.forEach(m=>{
+      ctx.beginPath(); ctx.ellipse(m.side*G*.33,-L*.36+m.t*L*.76,G*m.sz*.92,G*m.sz*.72,m.side*.38,0,Math.PI*2);
+      ctx.fillStyle=this.col[1]; ctx.fill();
+    });
+    ctx.globalAlpha=1;
+
+    const ds=sw*.38;
+    ctx.beginPath();
+    ctx.moveTo(ds*.28,-L*.23);
+    ctx.bezierCurveTo(G*.52+ds,-L*.37,G*.42+ds,-L*.5,ds*.65,-L*.44);
+    ctx.bezierCurveTo(-G*.08,-L*.36,0,-L*.27,ds*.28,-L*.23);
+    const dg=ctx.createLinearGradient(0,-L*.5,0,-L*.23);
+    dg.addColorStop(0,this.col[0]+'77'); dg.addColorStop(1,this.col[0]);
+    ctx.fillStyle=dg; ctx.fill();
+
+    ctx.beginPath(); ctx.ellipse(-G*.16,-L*.16,G*.26,L*.18,-.28,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(0,-L*.47);
+    ctx.bezierCurveTo( G*.66,-L*.32,  G*.88,-L*.07,  G*.54, L*.28);
+    ctx.bezierCurveTo( G*.3,  L*.43,  0,     L*.5,   0,     L*.5);
+    ctx.bezierCurveTo(-G*.3,  L*.43, -G*.54, L*.28, -G*.88,-L*.07);
+    ctx.bezierCurveTo(-G*.88,-L*.07, -G*.66,-L*.32,  0,    -L*.47);
+    ctx.closePath();
+    ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=1; ctx.stroke();
+
+    ctx.beginPath(); ctx.arc(-G*.26,-L*.36,3,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill();
+    ctx.beginPath(); ctx.arc(-G*.26-1,-L*.36-1,1.2,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.65)'; ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+let mx=-9999, my=-9999;
+let dragPad=null, dragOX=0, dragOY=0;
+let mdX=0, mdY=0, didDrag=false;
+
+function padAt(px,py) {
+  for (let i=pads.length-1;i>=0;i--) {
+    if (Math.hypot(px-pads[i].x,py-pads[i].y)<pads[i].r*1.15) return pads[i];
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', e=>{
+  mdX=e.clientX; mdY=e.clientY; didDrag=false;
+  const p=padAt(e.clientX,e.clientY);
+  if (p) { dragPad=p; dragOX=e.clientX-p.x; dragOY=e.clientY-p.y; }
+});
+window.addEventListener('mousemove', e=>{
+  mx=e.clientX; my=e.clientY;
+  if (dragPad) { dragPad.x=e.clientX-dragOX; dragPad.y=e.clientY-dragOY; didDrag=true; }
+});
+window.addEventListener('mouseup', e=>{
+  if (dragPad) { addRipple(dragPad.x,dragPad.y,.5); dragPad=null; }
+  else if (!didDrag) addRipple(e.clientX,e.clientY,1.2);
+  didDrag=false;
+});
+canvas.addEventListener('mouseleave',()=>{ mx=-9999; my=-9999; });
+
+let tDragPad=null, tOX=0, tOY=0;
+canvas.addEventListener('touchstart',e=>{
+  const t=e.touches[0];
+  const p=padAt(t.clientX,t.clientY);
+  if (p) { tDragPad=p; tOX=t.clientX-p.x; tOY=t.clientY-p.y; }
+  else addRipple(t.clientX,t.clientY,1.2);
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if (tDragPad) { const t=e.touches[0]; tDragPad.x=t.clientX-tOX; tDragPad.y=t.clientY-tOY; }
+},{passive:true});
+canvas.addEventListener('touchend',()=>{
+  if (tDragPad) { addRipple(tDragPad.x,tDragPad.y,.5); tDragPad=null; }
+},{passive:true});
+
+let tick=0;
+function loop() {
+  requestAnimationFrame(loop);
+  tick++;
+
+  ctx.drawImage(bgCanvas,0,0);
+
+  caustics.forEach(c=>{
+    c.ph+=c.spd;
+    const pulse=.65+.35*Math.sin(c.ph), r=c.r*pulse;
+    const g=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,r);
+    g.addColorStop(0,`rgba(90,210,150,${c.a*pulse})`);
+    g.addColorStop(.6,`rgba(50,160,110,${c.a*.3})`);
+    g.addColorStop(1,'transparent');
+    ctx.fillStyle=g; ctx.fillRect(c.x-r,c.y-r,r*2,r*2);
+  });
+
+  pads.forEach(p=>{
+    if (p!==dragPad && p!==tDragPad) {
+      p.x+=Math.sin(tick*.0012+p.wobPh)*.08;
+      p.y+=Math.cos(tick*.0009+p.wobPh+1)*.06;
+    }
+    drawPad(p,tick);
+  });
+
+  pads.forEach(p=>{
+    ctx.save(); ctx.globalAlpha=.07;
+    ctx.translate(p.x+4,p.y+6); ctx.scale(1,.38);
+    ctx.beginPath(); ctx.arc(0,0,p.r,p.notch+.18,p.notch+Math.PI*2-.18); ctx.lineTo(0,0); ctx.closePath();
+    ctx.fillStyle='#2a6040'; ctx.fill(); ctx.restore();
+  });
+
+  fish.forEach(f=>f.update(mx,my));
+  [...fish].sort((a,b)=>a.depth-b.depth).forEach(f=>f.draw());
+
+ reflections
+  fish.forEach(f=>{
+    ctx.save(); ctx.globalAlpha=.05;
+    ctx.translate(f.x+5,f.y+7); ctx.rotate(f.angle+Math.PI/2); ctx.scale(.85,-.3);
+    ctx.beginPath(); ctx.ellipse(0,0,f.girth*.9,f.len*.44,0,0,Math.PI*2);
+    ctx.fillStyle=f.col[0]; ctx.fill(); ctx.restore();
+  });
+
+  for (let i=ripples.length-1;i>=0;i--) {
+    const r=ripples[i];
+    r.r+=r.spd; r.a*=.962;
+    if (r.r>r.maxR||r.a<.004) { ripples.splice(i,1); continue; }
+    const fade=1-r.r/r.maxR;
+    ctx.beginPath(); ctx.ellipse(r.x,r.y,r.r,r.r*.44,0,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(170,235,200,${r.a*fade})`; ctx.lineWidth=1.2; ctx.stroke();
+    if (r.r>7) {
+      ctx.beginPath(); ctx.ellipse(r.x,r.y,r.r*.6,r.r*.26,0,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(200,255,225,${r.a*fade*.45})`; ctx.lineWidth=.7; ctx.stroke();
+    }
+  }
+
+  ctx.save(); ctx.globalAlpha=.02;
+  for (let i=0;i<4;i++) {
+    const sx=W*.2+Math.sin(tick*.007+i*1.3)*W*.28;
+    const sy=H*.25+Math.cos(tick*.005+i)*H*.18;
+    const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,100);
+    sg.addColorStop(0,'rgba(255,255,255,1)'); sg.addColorStop(1,'transparent');
+    ctx.fillStyle=sg; ctx.fillRect(sx-100,sy-100,200,200);
+  }
+  ctx.restore();
+}
+
+resize();
+loop();
+</script>
+</body>
+</html>
