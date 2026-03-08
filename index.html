@@ -306,6 +306,7 @@ canvas.addEventListener('mousedown', e=>{
 window.addEventListener('mousemove', e=>{
   mx=e.clientX; my=e.clientY;
   if (dragPad) { dragPad.x=e.clientX-dragOX; dragPad.y=e.clientY-dragOY; didDrag=true; }
+  else if (Math.hypot(e.clientX-mdX, e.clientY-mdY) > 6) didDrag=true;
 });
 window.addEventListener('mouseup', e=>{
   if (dragPad) { addRipple(dragPad.x,dragPad.y,.5); dragPad=null; }
@@ -363,7 +364,6 @@ function loop() {
   fish.forEach(f=>f.update(mx,my));
   [...fish].sort((a,b)=>a.depth-b.depth).forEach(f=>f.draw());
 
- reflections
   fish.forEach(f=>{
     ctx.save(); ctx.globalAlpha=.05;
     ctx.translate(f.x+5,f.y+7); ctx.rotate(f.angle+Math.PI/2); ctx.scale(.85,-.3);
